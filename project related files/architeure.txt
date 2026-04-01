@@ -1,0 +1,556 @@
+FINAL LOCKED ARCHITECTURE
+
+Blockchain-Based Organic Food Traceability System
+(Local – Ganache Only – Academic Version)
+
+🏗 1️⃣ SYSTEM LAYERS
+🔵 Layer 1 – Frontend (React)
+
+React (Vite)
+
+Ethers.js
+
+Axios
+
+QR Code Generator
+
+MetaMask integration
+
+Purpose:
+
+UI for all roles
+
+Connect wallet
+
+Trigger smart contract transactions
+
+Display supply chain trace
+
+🔵 Layer 2 – Backend (Express + MySQL)
+
+Express.js
+
+MySQL
+
+JWT Authentication
+
+bcrypt
+
+dotenv
+
+Purpose:
+
+User login system
+
+Role-based authentication
+
+Store wallet address
+
+Call smart contract via ethers.js
+
+IPFS certificate upload
+
+⚠ Important:
+No product data stored in MySQL.
+Only users.
+
+🔵 Layer 3 – Blockchain (Ganache + Solidity)
+
+Solidity smart contract
+
+Hardhat
+
+Ganache local blockchain
+
+Role validation
+
+Batch lifecycle
+
+Ownership transfer
+
+Quantity splitting
+
+Parent-child linking
+
+All product lifecycle stored here.
+
+🔵 Layer 4 – IPFS
+
+Certificate files stored on IPFS
+
+Only hash stored in blockchain
+
+🧱 2️⃣ DATABASE DESIGN (MySQL)
+
+Only this table:
+
+Users Table
+Field	Type
+id	INT
+name	VARCHAR
+email	VARCHAR
+password	VARCHAR (hashed)
+role	ENUM(Admin, Farmer, Distributor, Retailer)
+wallet_address	VARCHAR
+created_at	TIMESTAMP
+
+Nothing else.
+
+🔗 3️⃣ SMART CONTRACT DESIGN
+🔹 Role Storage
+mapping(address => Role) public roles;
+
+Admin registers users into blockchain.
+
+🔹 Batch Structure
+struct Batch {
+    string batchId;
+    string parentBatchId;
+    address owner;
+    string productName;
+    string farmLocation;
+    string certificateHash;
+    uint totalQuantity;
+    uint remainingQuantity;
+    string unit; // KG or Litre
+    uint timestamp;
+    bool exists;
+}
+🔹 Storage Mappings
+mapping(string => Batch) public batches;
+mapping(string => string[]) public childBatches;
+string[] public allBatchIds;
+🔄 4️⃣ COMPLETE DATA FLOW
+🔹 STEP 1 – Admin Registers User
+
+Admin stores user in MySQL
+
+Admin calls:
+registerUser(wallet, role)
+
+Blockchain now recognizes wallet role.
+
+🔹 STEP 2 – Farmer Creates Batch
+
+Farmer:
+
+Uploads certificate → IPFS → gets hash
+
+Calls createBatch()
+
+Smart contract:
+
+Generates batchId automatically
+
+Stores batch
+
+remainingQuantity = totalQuantity
+
+Adds to allBatchIds
+
+🔹 STEP 3 – Distributor Purchase
+
+Distributor selects batch.
+
+Calls purchaseBatch(parentBatchId, quantity)
+
+Smart contract:
+
+require(remaining >= quantity)
+
+parent.remainingQuantity -= quantity
+
+generate child batchId
+
+create child batch
+
+childBatches[parent].push(childId)
+
+Stored permanently.
+
+🔹 STEP 4 – Retailer Purchase
+
+Same logic.
+
+Child becomes parent for next stage.
+
+Tree grows.
+
+🔹 STEP 5 – QR Generation
+
+Retailer generates QR containing:
+
+Final batchId
+
+🔹 STEP 6 – Consumer Trace
+
+Frontend:
+
+Fetch batch details
+
+While parentBatchId != "":
+fetch parent
+
+Display full chain timeline
+
+All from blockchain.
+
+🔐 5️⃣ SECURITY MODEL
+
+MetaMask signs all blockchain transactions
+
+Smart contract checks msg.sender role
+
+Only owner can resell batch
+
+require statements enforce quantity rules
+
+No private keys stored in DB
+
+Blockchain immutable history
+
+🔄 6️⃣ BATCH ID GENERATION
+
+Smart contract auto-generates:
+
+Example:
+
+Root: B1
+Child: B1-1
+Grandchild: B1-1-1
+
+Uses internal counter.
+
+Frontend never generates ID.
+
+📦 7️⃣ QUANTITY RULES
+
+Quantity stored as uint
+
+Unit stored as string ("KG" / "Litre")
+
+remainingQuantity updated via transactions
+
+Always latest state returned
+
+Multiple distributors allowed
+
+Sequential blockchain execution ensures safety
+
+🎯 8️⃣ WHY THIS DESIGN IS CORRECT
+
+✔ Fully immutable lifecycle
+✔ No product data in DB
+✔ Parent-child traceable tree
+✔ Secure ownership transfer
+✔ Partial quantity supported
+✔ Ganache safe for academic
+✔ Clean separation of concerns
+✔ Strong viva-ready explanation
+
+🚀 FINAL ARCHITECTURE SUMMARY (ONE LINE)
+
+MySQL handles authentication,
+Blockchain handles immutable supply chain lifecycle,
+IPFS handles certificate storage,
+React handles UI and trace visualization.
+
+PHASE 1 — Environment & Project Setup
+Goal:
+
+Prepare clean foundation.
+
+Tasks:
+
+Install Node.js
+
+Install MySQL
+
+Install Ganache
+
+Install MetaMask
+
+Setup Hardhat
+
+Create project folder structure
+
+Initialize backend
+
+Initialize frontend
+
+Initialize blockchain folder
+
+Deliverable:
+
+Project structure ready.
+No logic yet.
+
+🔵 PHASE 2 — Database & Authentication System
+Goal:
+
+User system ready before blockchain logic.
+
+Tasks:
+
+Create MySQL database
+
+Create Users table
+
+Setup Express server
+
+Setup JWT authentication
+
+Password hashing (bcrypt)
+
+Role-based middleware
+
+Admin registration API
+
+Login API
+
+Protect routes by role
+
+Deliverable:
+
+Working login system.
+Admin can create Farmer/Distributor/Retailer.
+
+⚠️ No blockchain yet.
+
+🔵 PHASE 3 — Smart Contract Core Design
+Goal:
+
+Implement blockchain logic independently.
+
+Tasks:
+
+Write Role enum
+
+Write Batch struct
+
+Implement:
+
+registerUser()
+
+createBatch()
+
+purchaseBatch()
+
+getBatchDetails()
+
+Implement parent-child linking
+
+Implement batch ID auto-generation
+
+Add require validations
+
+Deploy on Ganache
+
+Test via Hardhat console
+
+Deliverable:
+
+Fully working smart contract locally.
+
+⚠️ No frontend/backend integration yet.
+
+🔵 PHASE 4 — Backend ↔ Blockchain Integration
+Goal:
+
+Connect Express with smart contract.
+
+Tasks:
+
+Setup ethers.js in backend
+
+Connect to Ganache
+
+Load contract ABI & address
+
+Create service layer:
+
+call createBatch()
+
+call purchaseBatch()
+
+call registerUser()
+
+Handle wallet-based transactions
+
+Ensure MetaMask signs transactions
+
+Deliverable:
+
+Backend can trigger smart contract.
+
+🔵 PHASE 5 — Farmer Module (End-to-End)
+Goal:
+
+First complete lifecycle module.
+
+Tasks:
+
+Frontend:
+
+Farmer Dashboard
+
+Create Batch Form
+
+Upload certificate (IPFS)
+
+Submit to backend
+
+Backend:
+
+Upload to IPFS
+
+Get hash
+
+Call smart contract
+
+Blockchain:
+
+Store batch
+
+Deliverable:
+
+Farmer can create batch successfully.
+
+🔵 PHASE 6 — Distributor Module
+Goal:
+
+Quantity splitting & ownership transfer.
+
+Tasks:
+
+Frontend:
+
+View available batches
+
+Purchase batch form
+
+Show remaining quantity
+
+Backend:
+
+Call purchaseBatch()
+
+Blockchain:
+
+Reduce parent remaining
+
+Create child batch
+
+Deliverable:
+
+Distributor can purchase partial quantity.
+
+🔵 PHASE 7 — Retailer Module
+Goal:
+
+Complete supply chain transfer.
+
+Tasks:
+
+View distributor batches
+
+Purchase from distributor
+
+Create child batch
+
+Display ownership change
+
+Deliverable:
+
+Retailer owns final batch.
+
+🔵 PHASE 8 — Consumer Trace & QR System
+Goal:
+
+Traceability visualization.
+
+Tasks:
+
+Generate QR code (batchId)
+
+Consumer page input
+
+Recursive parent fetch logic
+
+Build timeline UI
+
+Deliverable:
+
+Consumer sees full lifecycle chain.
+
+🔵 PHASE 9 — Testing & Validation
+Goal:
+
+Make it stable and viva-ready.
+
+Tasks:
+
+Test multiple purchases
+
+Test invalid quantity
+
+Test unauthorized access
+
+Test recursive fetching
+
+Stress test with many batches
+
+Record transaction time
+
+Measure gas usage
+
+Deliverable:
+
+Stable, tested system.
+
+🔵 PHASE 10 — Documentation & Final Presentation
+Goal:
+
+Major project polish.
+
+Tasks:
+
+Update SRS
+
+Add System Architecture diagram
+
+Add Database schema diagram
+
+Add Sequence diagrams
+
+Add Flowcharts
+
+Add Experimental results
+
+Add Screenshots
+
+Prepare PPT
+
+Deliverable:
+
+Complete submission package.
+
+📊 VISUAL DEVELOPMENT FLOW
+Phase 1 → Setup
+Phase 2 → Authentication
+Phase 3 → Smart Contract
+Phase 4 → Backend Integration
+Phase 5 → Farmer
+Phase 6 → Distributor
+Phase 7 → Retailer
+Phase 8 → Consumer
+Phase 9 → Testing
+Phase 10 → Documentation
+🎯 Development Strategy
+
+We will:
+
+✔ Build one phase fully
+✔ Test it
+✔ Lock it
+✔ Move to next 
