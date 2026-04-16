@@ -66,9 +66,9 @@ function getContractOrThrow() {
 }
 
 // ======== helper wrappers for contract calls ========
-export async function createFarmerBatch(farmerData, totalQuantity, unit) {
+export async function createFarmerBatch(farmerData, totalQuantity, unit, productPhotoHash = "") {
   const c = getContractOrThrow();
-  const tx = await c.createFarmerBatch(farmerData, totalQuantity, unit);
+  const tx = await c.createFarmerBatch(farmerData, totalQuantity, unit, productPhotoHash);
   const receipt = await tx.wait();
   
   // Parse event from logs (ethers.js v6 uses logs, not events)

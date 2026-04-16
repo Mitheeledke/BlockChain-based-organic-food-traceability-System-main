@@ -339,5 +339,21 @@ Your Blockchain Based Food Organic Traceability System frontend is now complete 
 ---
 
 **Generated:** March 2026
-**Status:** Production Ready
+**Status:**  Project Ready
 **Version:** 1.0.0
+
+
+
+npx hardhat clean
+npx hardhat compile
+npx hardhat node    
+npx hardhat run scripts/deploy.js --network ganache
+
+//open command prompt wher ipfs extracted files are extracted
+.\ipfs.exe daemon
+
+cd frontend                   
+npm run dev                         
+   
+ cd backend
+  npx nodemon server.js  

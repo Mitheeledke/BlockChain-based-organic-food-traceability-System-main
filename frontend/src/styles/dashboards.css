@@ -198,6 +198,61 @@ body {
   font-size: 13px;
 }
 
+.trace-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.trace-row {
+  display: grid;
+  gap: 16px;
+}
+
+.trace-card {
+  padding: 18px;
+  background: white;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+.trace-label {
+  display: block;
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.trace-value {
+  display: block;
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 600;
+}
+
+.trace-note {
+  color: #475569;
+  font-size: 0.95rem;
+  margin-top: 10px;
+}
+
+.trace-path {
+  word-break: break-word;
+}
+
+.trace-chain-card {
+  background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+}
+
+.qr-image {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 16px;
+  border-radius: 14px;
+  border: 1px solid #cbd5e0;
+}
+
 /* tiny spinner used inside buttons etc */
 .loading {
   border: 3px solid #f3f3f3;

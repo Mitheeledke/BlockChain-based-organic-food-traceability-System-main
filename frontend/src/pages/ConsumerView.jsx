@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import jsQR from "jsqr";
 import * as blockchain from "../services/blockchain";
+import { makeIpfsUrl } from "../services/ipfs";
 import "../styles/dashboards.css";
+import "../styles/consumer.css";
 import Navbar from "../components/Navbar";
 
 const hasFarmerDetails = (data) =>
@@ -20,15 +23,55 @@ export default function ConsumerView() {
   const [traceData, setTraceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [scanError, setScanError] = useState(null);
+  const canvasRef = useRef(null);
 
-  const handleTrace = async (e) => {
-    e.preventDefault();
+
+  const extractBatchIdFromQrText = (text) => {
+    if (!text) return null;
+    const trimmed = text.trim();
+
+    try {
+      const url = new URL(trimmed);
+      const params = new URLSearchParams(url.search);
+      return (params.get("batchId") || params.get("batch") || url.pathname.split("/").pop() || trimmed)
+        .toString()
+        .trim()
+        .toUpperCase();
+    } catch {
+      const queryMatch = trimmed.match(/(?:batchId|batch)=([A-Za-z0-9\-]+)/i);
+      if (queryMatch) return queryMatch[1].toUpperCase();
+      const idMatch = trimmed.match(/([A-Za-z0-9][A-Za-z0-9\-]*)/);
+      return idMatch ? idMatch[1].toUpperCase() : trimmed.toUpperCase();
+    }
+  };
+
+  const decodeCanvasImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, canvas.width, canvas.height);
+    return code?.data || null;
+  };
+
+  const handleQrResult = async (text) => {
+    const extracted = extractBatchIdFromQrText(text);
+    if (!extracted) {
+      throw new Error("Unable to extract batch ID from QR code.");
+    }
+    setBatchId(extracted);
+    await handleTraceById(extracted);
+  };
+
+  const handleTraceById = async (queryBatchId) => {
     setLoading(true);
     setError(null);
     setTraceData(null);
 
     try {
-      const normalizedBatchId = batchId.trim().toUpperCase();
+      const normalizedBatchId = queryBatchId.trim().toUpperCase();
       if (!normalizedBatchId) {
         throw new Error("Please enter a valid batch ID.");
       }
@@ -37,7 +80,6 @@ export default function ConsumerView() {
       const visited = new Set();
       let currentBatchId = normalizedBatchId;
 
-      // Walk from the entered batch to the root batch.
       while (currentBatchId && !visited.has(currentBatchId)) {
         visited.add(currentBatchId);
         const batch = await blockchain.getBatch(currentBatchId);
@@ -109,11 +151,53 @@ export default function ConsumerView() {
     }
   };
 
+  const handleTrace = async (e) => {
+    e.preventDefault();
+    await handleTraceById(batchId);
+  };
+
+  const handleQrFile = async (event) => {
+    setScanError(null);
+    setTraceData(null);
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (loadEvent) => {
+        const image = new Image();
+        image.onload = async () => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const decoded = decodeCanvasImage();
+          if (decoded) {
+            await handleQrResult(decoded);
+          } else {
+            setScanError("QR code was not detected in the uploaded image.");
+          }
+        };
+        image.onerror = () => {
+          setScanError("Could not read the QR image file.");
+        };
+        image.src = loadEvent.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setScanError("Failed to read the selected file.");
+    }
+  };
+
   return (
     <>
       <Navbar />
-      <div className="dashboard-container">
-        <div className="dashboard-header">
+      <div className="consumer-container">
+        <div className="consumer-header">
           <h1>Food Traceability Lookup</h1>
           <p style={{ marginTop: "10px", color: "#666", fontSize: "1.1em" }}>
             Access complete supply chain information by entering the product batch ID.
@@ -136,7 +220,25 @@ export default function ConsumerView() {
                 />
               </div>
             </div>
-            <div className="button-group">
+
+            <div className="consumer-file-actions">
+              <label className="consumer-upload-label">
+                Upload QR Image
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleQrFile}
+                  style={{ display: "none" }}
+                />
+              </label>
+              <div className="consumer-upload-note">
+                Choose a saved QR code image to extract the batch ID and display product trace details.
+              </div>
+            </div>
+
+            {scanError && <div className="error-box">{scanError}</div>}
+
+            <div className="button-group" style={{ marginTop: "18px" }}>
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? (
                   <>
@@ -150,404 +252,360 @@ export default function ConsumerView() {
           </div>
         </form>
 
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+
         {error && <div className="error-box">{error}</div>}
 
         {traceData && (
-          <div className="batch-details">
-            <h2
-              style={{
-                color: "#667eea",
-                marginTop: 0,
-                marginBottom: "25px",
-                fontSize: "1.5em",
-              }}
-            >
-              Product Trace: {traceData.queryBatchId}
-            </h2>
-
-            <div
-              className="form-section"
-              style={{ background: "#f0f9ff", borderLeft: "4px solid #48bb78" }}
-            >
-              <h2 className="form-section-title" style={{ color: "#2d5016" }}>
-                Organic Certification Proof
-              </h2>
-              <p style={{ color: "#555", fontSize: "0.95em" }}>
-                Complete supply chain records verified on blockchain.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                  gap: "20px",
-                  marginTop: "20px",
-                }}
-              >
-                <div
-                  style={{
-                    background: "white",
-                    padding: "16px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                    Batch Details
-                  </h3>
-                  <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                    <p>
-                      <strong>Batch ID:</strong> {traceData.batch.batchId}
-                    </p>
-                    <p>
-                      <strong>Total Quantity:</strong> {traceData.batch.totalQuantity}{" "}
-                      {traceData.batch.unit}
-                    </p>
-                    <p>
-                      <strong>Remaining Stock:</strong> {traceData.batch.remainingQuantity}{" "}
-                      {traceData.batch.unit}
-                    </p>
-                    <p>
-                      <strong>Created On:</strong>{" "}
-                      {new Date(Number(traceData.batch.timestamp) * 1000).toLocaleString()}
-                    </p>
-                    <p>
-                      <strong>Status:</strong>{" "}
-                      <span className="status-badge success" style={{ marginTop: "4px" }}>
-                        AUTHENTIC
-                      </span>
-                    </p>
-                  </div>
+          <div className="consumer-result-card">
+            <div className="trace-section trace-top-card">
+              <div className="trace-top-main">
+                <div>
+                  <h2 className="trace-heading">Organic Traceability Certificate</h2>
+                  <p className="trace-note">
+                    Verified product journey for batch <strong>{traceData.queryBatchId}</strong>.
+                  </p>
                 </div>
-
-                <div
-                  style={{
-                    background: "white",
-                    padding: "16px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                    Farmer Information
-                  </h3>
-                  <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                    <p>
-                      <strong>Farmer Name:</strong> {traceData.farmerData?.farmerName || "-"}
-                    </p>
-                    <p>
-                      <strong>Farm Address:</strong>{" "}
-                      {traceData.farmerData?.farmAddressFull || "-"}
-                    </p>
-                    <p>
-                      <strong>Farm GPS:</strong> {traceData.farmerData?.gpsCoordinates || "-"}
-                    </p>
-                    <p>
-                      <strong>Farm Area:</strong>{" "}
-                      {traceData.farmerData?.farmAreaInAcres || "-"} acres
-                    </p>
-                    <p>
-                      <strong>Source Batch:</strong> {traceData.farmerBatchId || "-"}
-                    </p>
-                    <p>
-                      <strong>Wallet:</strong>
-                      <br />
-                      <code style={{ fontSize: "0.75em", wordBreak: "break-all" }}>
-                        {traceData.farmerOwner || "-"}
-                      </code>
-                    </p>
-                  </div>
+                <div className="trace-photo-card">
+                  <img
+                    src={
+                      traceData.batch.productPhotoHash
+                        ? makeIpfsUrl(traceData.batch.productPhotoHash)
+                        : "https://via.placeholder.com/420x260?text=Organic+Product+Photo"
+                    }
+                    alt="Product trace photo"
+                    className="trace-photo"
+                  />
                 </div>
-
-                <div
-                  style={{
-                    background: "white",
-                    padding: "16px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                    Crop Information
-                  </h3>
-                  <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                    <p>
-                      <strong>Crop:</strong> {traceData.farmerData?.cropName || "-"}
-                    </p>
-                    <p>
-                      <strong>Variety:</strong> {traceData.farmerData?.cropVariety || "-"}
-                    </p>
-                    <p>
-                      <strong>Seed Source:</strong> {traceData.farmerData?.seedSource || "-"}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: "white",
-                    padding: "16px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#48bb78", fontSize: "1.1em" }}>
-                    Organic Certification
-                  </h3>
-                  <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                    <p>
-                      <strong>Authority:</strong>{" "}
-                      {traceData.farmerData?.organicCertificationAuthority || "-"}
-                    </p>
-                    <p>
-                      <strong>Cert #:</strong>{" "}
-                      {traceData.farmerData?.certificationNumber || "-"}
-                    </p>
-                    <p>
-                      <strong>Valid Until:</strong>{" "}
-                      {traceData.farmerData?.certificationExpiryDate
-                        ? new Date(
-                            Number(traceData.farmerData.certificationExpiryDate) * 1000
-                          ).toLocaleDateString()
-                        : "-"}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: "white",
-                    padding: "16px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                    Cultivation Timeline
-                  </h3>
-                  <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                    <p>
-                      <strong>Farm Name:</strong> {traceData.farmerData?.farmerName || "-"}
-                    </p>
-                    <p>
-                      <strong>Sown:</strong>{" "}
-                      {traceData.farmerData?.sowingDate
-                        ? new Date(Number(traceData.farmerData.sowingDate) * 1000).toLocaleDateString()
-                        : "-"}
-                    </p>
-                    <p>
-                      <strong>Harvested:</strong>{" "}
-                      {traceData.farmerData?.harvestDate
-                        ? new Date(Number(traceData.farmerData.harvestDate) * 1000).toLocaleDateString()
-                        : "-"}
-                    </p>
-                  </div>
-                </div>
-
-                {traceData.distributorData && Number(traceData.distributorData.distributorId) > 0 && (
-                  <div
-                    style={{
-                      background: "white",
-                      padding: "16px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e0",
-                    }}
-                  >
-                    <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                      Distributor Details
-                    </h3>
-                    <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                      <p>
-                        <strong>Company:</strong> {traceData.distributorData?.companyName || "-"}
-                      </p>
-                      <p>
-                        <strong>Address:</strong>{" "}
-                        {traceData.distributorData?.companyAddressFull || "-"}
-                      </p>
-                      <p>
-                        <strong>Vehicle #:</strong>{" "}
-                        {traceData.distributorData?.transportVehicleNumber || "-"}
-                      </p>
-                      <p>
-                        <strong>Pickup:</strong>{" "}
-                        {traceData.distributorData?.pickupDate
-                          ? new Date(Number(traceData.distributorData.pickupDate) * 1000).toLocaleDateString()
-                          : "-"}
-                      </p>
-                      <p>
-                        <strong>Delivery:</strong>{" "}
-                        {traceData.distributorData?.deliveryDate
-                          ? new Date(Number(traceData.distributorData.deliveryDate) * 1000).toLocaleDateString()
-                          : "-"}
-                      </p>
-                      <p>
-                        <strong>Storage:</strong>{" "}
-                        {traceData.distributorData?.storageTemperature || "-"}
-                      </p>
-                      <p>
-                        <strong>Warehouse:</strong>{" "}
-                        {traceData.distributorData?.warehouseLocation || "-"}
-                      </p>
-                      <p>
-                        <strong>Quality Check:</strong>{" "}
-                        {traceData.distributorData?.qualityCheckStatus || "-"}
-                      </p>
-                      <p>
-                        <strong>Source Batch:</strong> {traceData.distributorBatchId || "-"}
-                      </p>
-                      <p>
-                        <strong>Wallet:</strong>
-                        <br />
-                        <code style={{ fontSize: "0.75em", wordBreak: "break-all" }}>
-                          {traceData.distributorOwner || "-"}
-                        </code>
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {traceData.retailerData && Number(traceData.retailerData.retailerId) > 0 && (
-                  <div
-                    style={{
-                      background: "white",
-                      padding: "16px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e0",
-                    }}
-                  >
-                    <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>
-                      Retailer Details
-                    </h3>
-                    <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
-                      <p>
-                        <strong>Store Name:</strong> {traceData.retailerData?.storeName || "-"}
-                      </p>
-                      <p>
-                        <strong>Address:</strong>{" "}
-                        {traceData.retailerData?.storeAddressFull || "-"}
-                      </p>
-                      <p>
-                        <strong>Received:</strong>{" "}
-                        {traceData.retailerData?.productReceivedDate
-                          ? new Date(
-                              Number(traceData.retailerData.productReceivedDate) * 1000
-                            ).toLocaleDateString()
-                          : "-"}
-                      </p>
-                      <p>
-                        <strong>Expiry Date:</strong>{" "}
-                        {traceData.retailerData?.productExpiryDate
-                          ? new Date(
-                              Number(traceData.retailerData.productExpiryDate) * 1000
-                            ).toLocaleDateString()
-                          : "-"}
-                      </p>
-                      <p>
-                        <strong>Shelf Life:</strong>{" "}
-                        {traceData.retailerData?.shelfLifeInDays || "-"} days
-                      </p>
-                      <p>
-                        <strong>Storage Condition:</strong>{" "}
-                        {traceData.retailerData?.storageCondition || "-"}
-                      </p>
-                      <p>
-                        <strong>Price/kg:</strong> $
-                        {traceData.retailerData?.retailPricePerKg || "-"}
-                      </p>
-                      <p>
-                        <strong>Availability:</strong>{" "}
-                        {traceData.retailerData?.availabilityStatus || "-"}
-                      </p>
-                      <p>
-                        <strong>Source Batch:</strong> {traceData.retailerBatchId || "-"}
-                      </p>
-                      <p>
-                        <strong>Wallet:</strong>
-                        <br />
-                        <code style={{ fontSize: "0.75em", wordBreak: "break-all" }}>
-                          {traceData.retailerOwner || "-"}
-                        </code>
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
 
-              <div
-                style={{
-                  marginTop: "20px",
-                  padding: "14px",
-                  background: "#edf2f7",
-                  borderLeft: "3px solid #48bb78",
-                  borderRadius: "4px",
-                  fontSize: "0.9em",
-                  color: "#2d3748",
-                }}
-              >
-                <strong>Verified on Blockchain:</strong> All farmer information, crop details, and
-                organic certification are permanently recorded and cannot be modified.
+              <div className="trace-grid">
+                <div className="trace-card">
+                  <span className="trace-label">Verification Status</span>
+                  <span className="trace-value">AUTHENTIC</span>
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Batch Date</span>
+                  <span className="trace-value">
+                    {new Date(Number(traceData.batch.timestamp) * 1000).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Quantity</span>
+                  <span className="trace-value">
+                    {traceData.batch.totalQuantity} {traceData.batch.unit}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {traceData.tracePath && traceData.tracePath.length > 0 && (
-              <div className="form-section">
-                <h2 className="form-section-title">Trace Path</h2>
-                <p style={{ margin: 0, color: "#444", wordBreak: "break-word" }}>
-                  {traceData.tracePath.join(" -> ")}
-                </p>
+            <div className="trace-section">
+              <h3 className="trace-section-title">Proof & IPFS Images</h3>
+              <div className="image-gallery">
+                <div className="image-card">
+                  <span className="trace-label">Product Photo</span>
+                  <img
+                    src={
+                      traceData.batch.productPhotoHash
+                        ? makeIpfsUrl(traceData.batch.productPhotoHash)
+                        : "https://via.placeholder.com/320x200?text=No+Image"
+                    }
+                    alt="Product photo"
+                    className="trace-image-preview"
+                  />
+                  <a
+                    className="trace-link"
+                    href={
+                      traceData.batch.productPhotoHash
+                        ? makeIpfsUrl(traceData.batch.productPhotoHash)
+                        : "#"
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {traceData.batch.productPhotoHash
+                      ? "Open IPFS Product Image"
+                      : "Product image not available"}
+                  </a>
+                </div>
+                <div className="image-card">
+                  <span className="trace-label">Farm Photo</span>
+                  <img
+                    src={
+                      traceData.farmerData?.farmPhotoHash
+                        ? makeIpfsUrl(traceData.farmerData.farmPhotoHash)
+                        : "https://via.placeholder.com/320x200?text=No+Image"
+                    }
+                    alt="Farm photo"
+                    className="trace-image-preview"
+                  />
+                  <a
+                    className="trace-link"
+                    href={
+                      traceData.farmerData?.farmPhotoHash
+                        ? makeIpfsUrl(traceData.farmerData.farmPhotoHash)
+                        : "#"
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {traceData.farmerData?.farmPhotoHash
+                      ? "Open IPFS Farm Image"
+                      : "Farm image not available"}
+                  </a>
+                </div>
+                <div className="image-card">
+                  <span className="trace-label">Transit Photo</span>
+                  <img
+                    src={
+                      traceData.distributorData?.transitPhotoHash
+                        ? makeIpfsUrl(traceData.distributorData.transitPhotoHash)
+                        : "https://via.placeholder.com/320x200?text=No+Image"
+                    }
+                    alt="Transit photo"
+                    className="trace-image-preview"
+                  />
+                  <a
+                    className="trace-link"
+                    href={
+                      traceData.distributorData?.transitPhotoHash
+                        ? makeIpfsUrl(traceData.distributorData.transitPhotoHash)
+                        : "#"
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {traceData.distributorData?.transitPhotoHash
+                      ? "Open IPFS Transit Image"
+                      : "Transit image not available"}
+                  </a>
+                </div>
+              </div>
+
+              <div className="trace-card certification-proof-card">
+                <span className="trace-label">Certification Authority</span>
+                <span className="trace-value">
+                  {traceData.farmerData?.organicCertificationAuthority || "-"}
+                </span>
+                <span className="trace-label">Certification Number</span>
+                <span className="trace-value">
+                  {traceData.farmerData?.certificationNumber || "-"}
+                </span>
+                <span className="trace-label">Certification Proof</span>
+                <span className="trace-value">
+                  {traceData.farmerData?.organicCertificationAuthority
+                    ? "Organic certification is recorded on-chain and verifiable by the issuing authority."
+                    : "Certification proof not available."}
+                </span>
+              </div>
+            </div>
+            <div className="trace-section">
+              <h3 className="trace-section-title">Farmer & Crop Details</h3>
+              <div className="trace-row">
+                <div className="trace-card">
+                  <span className="trace-label">Farmer Name</span>
+                  <span className="trace-value">{traceData.farmerData?.farmerName || "-"}</span>
+                  <span className="trace-label">Farm Address</span>
+                  <span className="trace-value">{traceData.farmerData?.farmAddressFull || "-"}</span>
+                  <span className="trace-label">Farm GPS</span>
+                  <span className="trace-value">{traceData.farmerData?.gpsCoordinates || "-"}</span>
+                  <span className="trace-label">Farm Area</span>
+                  <span className="trace-value">{traceData.farmerData?.farmAreaInAcres || "-"} acres</span>
+                  <span className="trace-label">Soil Health</span>
+                  <span className="trace-value">{traceData.farmerData?.soilHealthStatus || "-"}</span>
+                  <span className="trace-label">Fertilizer Used</span>
+                  <span className="trace-value">{traceData.farmerData?.fertilizerUsed || "-"}</span>
+                  {traceData.farmerData?.farmPhotoHash && (
+                    <>
+                      <span className="trace-label">Farm Photo</span>
+                      <a
+                        className="trace-value trace-link"
+                        href={makeIpfsUrl(traceData.farmerData.farmPhotoHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View Photo
+                      </a>
+                    </>
+                  )}
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Crop</span>
+                  <span className="trace-value">{traceData.farmerData?.cropName || "-"}</span>
+                  <span className="trace-label">Variety</span>
+                  <span className="trace-value">{traceData.farmerData?.cropVariety || "-"}</span>
+                  <span className="trace-label">Seed Source</span>
+                  <span className="trace-value">{traceData.farmerData?.seedSource || "-"}</span>
+                  <span className="trace-label">Source Batch</span>
+                  <span className="trace-value">{traceData.farmerBatchId || "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="trace-section">
+              <h3 className="trace-section-title">Organic Certification</h3>
+              <div className="trace-grid">
+                <div className="trace-card">
+                  <span className="trace-label">Authority</span>
+                  <span className="trace-value">
+                    {traceData.farmerData?.organicCertificationAuthority || "-"}
+                  </span>
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Certification #</span>
+                  <span className="trace-value">{traceData.farmerData?.certificationNumber || "-"}</span>
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Valid Until</span>
+                  <span className="trace-value">
+                    {traceData.farmerData?.certificationExpiryDate
+                      ? new Date(Number(traceData.farmerData.certificationExpiryDate) * 1000).toLocaleDateString()
+                      : "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="trace-section">
+              <h3 className="trace-section-title">Cultivation Timeline</h3>
+              <div className="trace-grid">
+                <div className="trace-card">
+                  <span className="trace-label">Sown</span>
+                  <span className="trace-value">
+                    {traceData.farmerData?.sowingDate
+                      ? new Date(Number(traceData.farmerData.sowingDate) * 1000).toLocaleDateString()
+                      : "-"}
+                  </span>
+                </div>
+                <div className="trace-card">
+                  <span className="trace-label">Harvested</span>
+                  <span className="trace-value">
+                    {traceData.farmerData?.harvestDate
+                      ? new Date(Number(traceData.farmerData.harvestDate) * 1000).toLocaleDateString()
+                      : "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {traceData.distributorData && Number(traceData.distributorData.distributorId) > 0 && (
+              <div className="trace-section">
+                <h3 className="trace-section-title">Distributor Details</h3>
+                <div className="trace-row">
+                  <div className="trace-card">
+                    <span className="trace-label">Company</span>
+                    <span className="trace-value">{traceData.distributorData.companyName || "-"}</span>
+                    <span className="trace-label">Address</span>
+                    <span className="trace-value">{traceData.distributorData.companyAddressFull || "-"}</span>
+                    <span className="trace-label">Vehicle</span>
+                    <span className="trace-value">{traceData.distributorData.transportVehicleNumber || "-"}</span>
+                    <span className="trace-label">Transport Type</span>
+                    <span className="trace-value">{traceData.distributorData.vehicleType || "-"}</span>
+                    <span className="trace-label">License No.</span>
+                    <span className="trace-value">{traceData.distributorData.distributorLicenseNum || "-"}</span>
+                  </div>
+                  <div className="trace-card">
+                    <span className="trace-label">Pickup</span>
+                    <span className="trace-value">
+                      {traceData.distributorData.pickupDate
+                        ? new Date(Number(traceData.distributorData.pickupDate) * 1000).toLocaleDateString()
+                        : "-"}
+                    </span>
+                    <span className="trace-label">Delivery</span>
+                    <span className="trace-value">
+                      {traceData.distributorData.deliveryDate
+                        ? new Date(Number(traceData.distributorData.deliveryDate) * 1000).toLocaleDateString()
+                        : "-"}
+                    </span>
+                    <span className="trace-label">Temperature</span>
+                    <span className="trace-value">
+                      {traceData.distributorData.transportTempCelsius !== undefined
+                        ? `${traceData.distributorData.transportTempCelsius}°C`
+                        : "-"}
+                    </span>
+                    <span className="trace-label">Humidity</span>
+                    <span className="trace-value">
+                      {traceData.distributorData.humidityLevel !== undefined
+                        ? `${traceData.distributorData.humidityLevel}%`
+                        : "-"}
+                    </span>
+                    {traceData.distributorData.transitPhotoHash && (
+                      <>
+                        <span className="trace-label">Transit Photo</span>
+                        <a
+                          className="trace-value trace-link"
+                          href={makeIpfsUrl(traceData.distributorData.transitPhotoHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View Photo
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
-            {traceData.children && traceData.children.length > 0 && (
-              <div className="form-section">
-                <h2 className="form-section-title">
-                  Distribution Chain ({traceData.children.length} step
-                  {traceData.children.length !== 1 ? "s" : ""})
-                </h2>
-                <div style={{ display: "grid", gap: "12px" }}>
+            {traceData.retailerData && Number(traceData.retailerData.retailerId) > 0 && (
+              <div className="trace-section">
+                <h3 className="trace-section-title">Retailer Details</h3>
+                <div className="trace-row">
+                  <div className="trace-card">
+                    <span className="trace-label">Store Name</span>
+                    <span className="trace-value">{traceData.retailerData.storeName || "-"}</span>
+                    <span className="trace-label">Address</span>
+                    <span className="trace-value">{traceData.retailerData.storeAddressFull || "-"}</span>
+                  </div>
+                  <div className="trace-card">
+                    <span className="trace-label">Received</span>
+                    <span className="trace-value">
+                      {traceData.retailerData.productReceivedDate
+                        ? new Date(Number(traceData.retailerData.productReceivedDate) * 1000).toLocaleDateString()
+                        : "-"}
+                    </span>
+                    <span className="trace-label">Expiry Date</span>
+                    <span className="trace-value">
+                      {traceData.retailerData.productExpiryDate
+                        ? new Date(Number(traceData.retailerData.productExpiryDate) * 1000).toLocaleDateString()
+                        : "-"}
+                    </span>
+                    <span className="trace-label">Storage Condition</span>
+                    <span className="trace-value">{traceData.retailerData.storageCondition || "-"}</span>
+                    <span className="trace-label">Retailer License</span>
+                    <span className="trace-value">{traceData.retailerData.retailerLicenseNum || "-"}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="trace-section trace-note-box">
+              <strong>Verified on Blockchain:</strong> All farmer information, crop details, and organic certification are permanently recorded and cannot be modified.
+            </div>
+
+            {traceData.tracePath?.length > 0 && (
+              <div className="trace-section">
+                <h3 className="trace-section-title">Trace Path</h3>
+                <p className="trace-value trace-path">{traceData.tracePath.join(" -> ")}</p>
+              </div>
+            )}
+
+            {traceData.children?.length > 0 ? (
+              <div className="trace-section">
+                <h3 className="trace-section-title">Distribution Chain</h3>
+                <div className="trace-grid">
                   {traceData.children.map((child, index) => (
-                    <div
-                      key={child}
-                      style={{
-                        padding: "16px",
-                        background: "linear-gradient(135deg, #f8f9fa 0%, #e8ecff 100%)",
-                        border: "1px solid #ddd",
-                        borderRadius: "6px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "15px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          background: "#667eea",
-                          color: "white",
-                          width: "40px",
-                          height: "40px",
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: "bold",
-                          fontSize: "1.1em",
-                        }}
-                      >
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, color: "#333", fontSize: "1em" }}>{child}</div>
-                        <div style={{ fontSize: "0.85em", color: "#666", marginTop: "2px" }}>
-                          Downstream batch
-                        </div>
-                      </div>
+                    <div key={child} className="trace-card trace-chain-card">
+                      <span className="trace-label">Step {index + 1}</span>
+                      <span className="trace-value">{child}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
-
-            {(!traceData.children || traceData.children.length === 0) && (
-              <div className="info-box">This is the final visible batch. No downstream sales found.</div>
+            ) : (
+              <div className="trace-section trace-note-box">
+                This is the final visible batch. No downstream sales found.
+              </div>
             )}
           </div>
         )}

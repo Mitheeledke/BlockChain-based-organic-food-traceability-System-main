@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as blockchain from "../services/blockchain";
+import { uploadFileToIpfs, makeIpfsUrl } from "../services/ipfs";
 import "../styles/dashboards.css";
 import Navbar from "../components/Navbar";
 
@@ -12,16 +13,22 @@ export default function DistributorDashboard() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ipfsError, setIpfsError] = useState("");
+  const [transitPhotoUrl, setTransitPhotoUrl] = useState("");
   const [distributorData, setDistributorData] = useState({
     distributorId: 1,
     companyName: "",
     companyAddressFull: "",
     transportVehicleNumber: "",
+    vehicleType: "",
     pickupDate: "",
     deliveryDate: "",
-    storageTemperature: "",
+    transportTempCelsius: 0,
+    humidityLevel: 0,
     warehouseLocation: "",
     qualityCheckStatus: "Good",
+    distributorLicenseNum: "",
+    transitPhotoHash: "",
   });
 
   useEffect(() => {
@@ -64,6 +71,23 @@ export default function DistributorDashboard() {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleFileUpload = async (event, fieldName, previewSetter) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIpfsError("");
+    try {
+      const hash = await uploadFileToIpfs(file);
+      setDistributorData((prev) => ({ ...prev, [fieldName]: hash }));
+      if (previewSetter) {
+        previewSetter(makeIpfsUrl(hash));
+      }
+    } catch (err) {
+      console.error("IPFS upload failed", err);
+      setIpfsError(err.message || "Failed to upload file to IPFS");
+    }
   };
 
   const handlePurchaseBatch = async (e) => {
@@ -115,6 +139,8 @@ export default function DistributorDashboard() {
         pickupDate: pickupTimestamp,
         deliveryDate: deliveryTimestamp,
         distributorId: parseInt(distributorData.distributorId) || 1,
+        transportTempCelsius: parseInt(distributorData.transportTempCelsius) || 0,
+        humidityLevel: parseInt(distributorData.humidityLevel) || 0,
       };
 
       const receipt = await blockchain.addDistributorDetails(selectedBatchId, submittedData);
@@ -142,6 +168,7 @@ export default function DistributorDashboard() {
       </div>
 
       {error && <div className="error-box">{error}</div>}
+      {ipfsError && <div className="error-box">{ipfsError}</div>}
       {successMessage && <div className="success-message">{successMessage}</div>}
 
       <div className="batch-selector">
@@ -232,6 +259,17 @@ export default function DistributorDashboard() {
                   />
                 </div>
                 <div className="form-group required">
+                  <label>Vehicle Type</label>
+                  <input
+                    type="text"
+                    name="vehicleType"
+                    value={distributorData.vehicleType}
+                    onChange={handleInputChange}
+                    placeholder="Refrigerated Truck, Van, Rail"
+                    required
+                  />
+                </div>
+                <div className="form-group required">
                   <label>Pickup Date</label>
                   <input
                     type="date"
@@ -250,6 +288,54 @@ export default function DistributorDashboard() {
                     onChange={handleInputChange}
                     required
                   />
+                </div>
+                <div className="form-group required">
+                  <label>Transport Temperature (°C)</label>
+                  <input
+                    type="number"
+                    name="transportTempCelsius"
+                    value={distributorData.transportTempCelsius}
+                    onChange={handleInputChange}
+                    placeholder="4"
+                    required
+                  />
+                </div>
+                <div className="form-group required">
+                  <label>Humidity Level (%)</label>
+                  <input
+                    type="number"
+                    name="humidityLevel"
+                    value={distributorData.humidityLevel}
+                    onChange={handleInputChange}
+                    placeholder="65"
+                    min="0"
+                    max="100"
+                    required
+                  />
+                </div>
+                <div className="form-group required">
+                  <label>Distributor License No.</label>
+                  <input
+                    type="text"
+                    name="distributorLicenseNum"
+                    value={distributorData.distributorLicenseNum}
+                    onChange={handleInputChange}
+                    placeholder="DL-2024-7890"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Transit Photo (IPFS Upload)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, "transitPhotoHash", setTransitPhotoUrl)}
+                  />
+                  {transitPhotoUrl && (
+                    <a href={transitPhotoUrl} target="_blank" rel="noreferrer" className="trace-link">
+                      View uploaded transit photo
+                    </a>
+                  )}
                 </div>
               </div>
             </div>

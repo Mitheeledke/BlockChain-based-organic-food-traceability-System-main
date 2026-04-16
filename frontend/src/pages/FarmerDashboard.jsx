@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as blockchain from "../services/blockchain";
+import { uploadFileToIpfs, makeIpfsUrl } from "../services/ipfs";
 import "../styles/dashboards.css";
 import Navbar from "../components/Navbar";
 
@@ -8,6 +9,7 @@ export default function FarmerDashboard() {
   const [batchId, setBatchId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ipfsError, setIpfsError] = useState("");
   const [farmerData, setFarmerData] = useState({
     farmerId: 1,
     farmerName: "",
@@ -19,14 +21,20 @@ export default function FarmerDashboard() {
     seedSource: "",
     sowingDate: "",
     harvestDate: "",
+    soilHealthStatus: "",
+    fertilizerUsed: "",
     organicCertificationAuthority: "",
     certificationNumber: "",
     certificationExpiryDate: "",
+    farmPhotoHash: "",
+    productPhotoHash: "",
   });
   const [quantity, setQuantity] = useState(0);
   const [unit, setUnit] = useState("kg");
   const [geoLoading, setGeoLoading] = useState(false);
   const [showProof, setShowProof] = useState(false);
+  const [farmPhotoUrl, setFarmPhotoUrl] = useState("");
+  const [productPhotoUrl, setProductPhotoUrl] = useState("");
 
   // Capture current GPS location using browser geolocation API
   const handleGetCurrentLocation = () => {
@@ -65,6 +73,23 @@ export default function FarmerDashboard() {
         maximumAge: 0,
       }
     );
+  };
+
+  const handleFileUpload = async (event, fieldName, previewSetter) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIpfsError("");
+    try {
+      const hash = await uploadFileToIpfs(file);
+      setFarmerData((prev) => ({ ...prev, [fieldName]: hash }));
+      if (previewSetter) {
+        previewSetter(makeIpfsUrl(hash));
+      }
+    } catch (err) {
+      console.error("IPFS upload failed", err);
+      setIpfsError(err.message || "Failed to upload file to IPFS");
+    }
   };
 
   useEffect(() => {
@@ -119,7 +144,8 @@ export default function FarmerDashboard() {
       const response = await blockchain.createFarmerBatch(
         submittedData,
         parseInt(quantity) || 0,
-        unit
+        unit,
+        farmerData.productPhotoHash || ""
       );
       console.log("Batch created", response);
 
@@ -151,6 +177,7 @@ export default function FarmerDashboard() {
       </div>
 
       {error && <div className="error-box">{error}</div>}
+      {ipfsError && <div className="error-box">{ipfsError}</div>}
       {batchId && (
         <div className="success-message">
           Batch created successfully! Batch ID: <strong>{batchId}</strong>
@@ -296,6 +323,66 @@ export default function FarmerDashboard() {
         </div>
 
         <div className="form-section">
+          <h2 className="form-section-title">Soil & Crop Health</h2>
+          <div className="form-grid">
+            <div className="form-group required">
+              <label>Soil Health Status</label>
+              <input
+                type="text"
+                name="soilHealthStatus"
+                value={farmerData.soilHealthStatus}
+                onChange={handleInputChange}
+                placeholder="Rich, Balanced pH, Nutrient Tested"
+                required
+              />
+            </div>
+            <div className="form-group required">
+              <label>Fertilizer Used</label>
+              <input
+                type="text"
+                name="fertilizerUsed"
+                value={farmerData.fertilizerUsed}
+                onChange={handleInputChange}
+                placeholder="Organic compost, Vermicompost, Bio-fertilizer"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Farm / Crop Photo (IPFS Upload)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileUpload(e, "farmPhotoHash", setFarmPhotoUrl)}
+              />
+              {farmPhotoUrl && (
+                <a href={farmPhotoUrl} target="_blank" rel="noreferrer" className="trace-link">
+                  View uploaded farm photo
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="form-section">
+          <h2 className="form-section-title">Evidence Upload</h2>
+          <div className="form-grid">
+            <div className="form-group required">
+              <label>Certificate Upload</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileUpload(e, "productPhotoHash", setProductPhotoUrl)}
+              />
+              {productPhotoUrl && (
+                <a href={productPhotoUrl} target="_blank" rel="noreferrer" className="trace-link">
+                  View uploaded product photo
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="form-section">
           <h2 className="form-section-title">Organic Certification</h2>
           <div className="form-grid">
             <div className="form-group required">
@@ -436,6 +523,8 @@ export default function FarmerDashboard() {
                 <p><strong>Crop Name:</strong> {farmerData.cropName || "—"}</p>
                 <p><strong>Crop Variety:</strong> {farmerData.cropVariety || "—"}</p>
                 <p><strong>Seed Source:</strong> {farmerData.seedSource || "—"}</p>
+                <p><strong>Soil Health:</strong> {farmerData.soilHealthStatus || "—"}</p>
+                <p><strong>Fertilizer Used:</strong> {farmerData.fertilizerUsed || "—"}</p>
               </div>
             </div>
 
@@ -476,6 +565,19 @@ export default function FarmerDashboard() {
               <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
                 <p><strong>Total Quantity:</strong> {quantity || "—"} {unit}</p>
                 <p><strong>Wallet:</strong><br /><code style={{ fontSize: "0.8em", wordBreak: "break-all" }}>{account || "Not connected"}</code></p>
+              </div>
+            </div>
+
+            <div style={{
+              background: "white",
+              padding: "16px",
+              borderRadius: "6px",
+              border: "1px solid #cbd5e0",
+            }}>
+              <h3 style={{ marginTop: 0, color: "#667eea", fontSize: "1.1em" }}>📸 Uploaded Evidence</h3>
+              <div style={{ fontSize: "0.9em", lineHeight: "1.8" }}>
+                <p><strong>Farm Photo:</strong> {farmPhotoUrl ? <a href={farmPhotoUrl} target="_blank" rel="noreferrer">Open</a> : "—"}</p>
+                <p><strong>Product Photo:</strong> {productPhotoUrl ? <a href={productPhotoUrl} target="_blank" rel="noreferrer">Open</a> : "—"}</p>
               </div>
             </div>
           </div>

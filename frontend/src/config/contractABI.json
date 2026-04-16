@@ -1,10 +1,5 @@
 [
     {
-      "inputs": [],
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
-    {
       "anonymous": false,
       "inputs": [
         {
@@ -104,6 +99,11 @@
               "type": "string"
             },
             {
+              "internalType": "string",
+              "name": "vehicleType",
+              "type": "string"
+            },
+            {
               "internalType": "uint256",
               "name": "pickupDate",
               "type": "uint256"
@@ -114,9 +114,14 @@
               "type": "uint256"
             },
             {
-              "internalType": "string",
-              "name": "storageTemperature",
-              "type": "string"
+              "internalType": "int256",
+              "name": "transportTempCelsius",
+              "type": "int256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "humidityLevel",
+              "type": "uint256"
             },
             {
               "internalType": "string",
@@ -126,6 +131,16 @@
             {
               "internalType": "string",
               "name": "qualityCheckStatus",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "distributorLicenseNum",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "transitPhotoHash",
               "type": "string"
             }
           ],
@@ -191,6 +206,11 @@
             {
               "internalType": "string",
               "name": "availabilityStatus",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "retailerLicenseNum",
               "type": "string"
             }
           ],
@@ -272,6 +292,11 @@
           "internalType": "bool",
           "name": "exists",
           "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "productPhotoHash",
+          "type": "string"
         }
       ],
       "stateMutability": "view",
@@ -357,6 +382,16 @@
             },
             {
               "internalType": "string",
+              "name": "soilHealthStatus",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "fertilizerUsed",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
               "name": "organicCertificationAuthority",
               "type": "string"
             },
@@ -369,6 +404,11 @@
               "internalType": "uint256",
               "name": "certificationExpiryDate",
               "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "farmPhotoHash",
+              "type": "string"
             }
           ],
           "internalType": "struct FoodTraceability.FarmerData",
@@ -383,6 +423,11 @@
         {
           "internalType": "string",
           "name": "_unit",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_productPhotoHash",
           "type": "string"
         }
       ],
@@ -428,6 +473,11 @@
           "type": "string"
         },
         {
+          "internalType": "string",
+          "name": "vehicleType",
+          "type": "string"
+        },
+        {
           "internalType": "uint256",
           "name": "pickupDate",
           "type": "uint256"
@@ -438,9 +488,14 @@
           "type": "uint256"
         },
         {
-          "internalType": "string",
-          "name": "storageTemperature",
-          "type": "string"
+          "internalType": "int256",
+          "name": "transportTempCelsius",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "humidityLevel",
+          "type": "uint256"
         },
         {
           "internalType": "string",
@@ -450,6 +505,16 @@
         {
           "internalType": "string",
           "name": "qualityCheckStatus",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "distributorLicenseNum",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "transitPhotoHash",
           "type": "string"
         }
       ],
@@ -518,6 +583,16 @@
         },
         {
           "internalType": "string",
+          "name": "soilHealthStatus",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "fertilizerUsed",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
           "name": "organicCertificationAuthority",
           "type": "string"
         },
@@ -530,6 +605,11 @@
           "internalType": "uint256",
           "name": "certificationExpiryDate",
           "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "farmPhotoHash",
+          "type": "string"
         }
       ],
       "stateMutability": "view",
@@ -599,6 +679,11 @@
               "internalType": "bool",
               "name": "exists",
               "type": "bool"
+            },
+            {
+              "internalType": "string",
+              "name": "productPhotoHash",
+              "type": "string"
             }
           ],
           "internalType": "struct FoodTraceability.Batch",
@@ -649,24 +734,6 @@
           "type": "string"
         }
       ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_user",
-          "type": "address"
-        },
-        {
-          "internalType": "enum FoodTraceability.Role",
-          "name": "_role",
-          "type": "uint8"
-        }
-      ],
-      "name": "registerUser",
-      "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
     },
@@ -724,25 +791,11 @@
           "internalType": "string",
           "name": "availabilityStatus",
           "type": "string"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
+        },
         {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "roles",
-      "outputs": [
-        {
-          "internalType": "enum FoodTraceability.Role",
-          "name": "",
-          "type": "uint8"
+          "internalType": "string",
+          "name": "retailerLicenseNum",
+          "type": "string"
         }
       ],
       "stateMutability": "view",

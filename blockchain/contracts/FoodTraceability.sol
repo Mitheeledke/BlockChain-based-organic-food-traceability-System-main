@@ -24,6 +24,7 @@ contract FoodTraceability {
         string unit;
         uint timestamp;
         bool exists;
+        string productPhotoHash; // IPFS hash for product photo
     }
 
     mapping(string => Batch) public batches;
@@ -44,9 +45,12 @@ contract FoodTraceability {
         string seedSource;
         uint sowingDate;
         uint harvestDate;
+        string soilHealthStatus;         // NEW: Soil quality info
+        string fertilizerUsed;           // NEW: Confirming organic inputs
         string organicCertificationAuthority;
         string certificationNumber;
         uint certificationExpiryDate;
+        string farmPhotoHash;            // NEW: IPFS link to farm/crop photo
     }
 
     mapping(string => FarmerData) public farmerDetails;
@@ -57,11 +61,15 @@ contract FoodTraceability {
         string companyName;
         string companyAddressFull;
         string transportVehicleNumber;
+        string vehicleType;              // NEW: e.g., Refrigerated truck
         uint pickupDate;
         uint deliveryDate;
-        string storageTemperature;
+        int transportTempCelsius;        // NEW: Specific temperature record
+        uint humidityLevel;              // NEW: Important for organics
         string warehouseLocation;
         string qualityCheckStatus;
+        string distributorLicenseNum;    // NEW: Regulatory field
+        string transitPhotoHash;         // NEW: IPFS link to loading/unloading photo
     }
 
     mapping(string => DistributorData) public distributorDetails;
@@ -77,6 +85,7 @@ contract FoodTraceability {
         string storageCondition;
         uint retailPricePerKg;
         string availabilityStatus;
+        string retailerLicenseNum;       // NEW: Regulatory field
     }
 
     mapping(string => RetailerData) public retailerDetails;
@@ -118,7 +127,8 @@ contract FoodTraceability {
     function createFarmerBatch(
         FarmerData memory _farmerData,
         uint _totalQuantity,
-        string memory _unit
+        string memory _unit,
+        string memory _productPhotoHash
     ) external returns (string memory) {
 
         string memory newBatchId = _generateBatchId("");
@@ -131,7 +141,8 @@ contract FoodTraceability {
             remainingQuantity: _totalQuantity,
             unit: _unit,
             timestamp: block.timestamp,
-            exists: true
+            exists: true,
+            productPhotoHash: _productPhotoHash
         });
 
         farmerDetails[newBatchId] = _farmerData;
@@ -163,7 +174,8 @@ contract FoodTraceability {
             remainingQuantity: _quantity,
             unit: batches[_parentId].unit,
             timestamp: block.timestamp,
-            exists: true
+            exists: true,
+            productPhotoHash: batches[_parentId].productPhotoHash
         });
 
         childBatches[_parentId].push(newBatchId);

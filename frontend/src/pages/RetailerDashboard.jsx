@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import * as blockchain from "../services/blockchain";
 import "../styles/dashboards.css";
 import Navbar from "../components/Navbar";
@@ -8,6 +9,9 @@ export default function RetailerDashboard() {
   const [allBatches, setAllBatches] = useState([]);
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [batchInfo, setBatchInfo] = useState(null);
+  const [chainRetailerDetails, setChainRetailerDetails] = useState(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [qrText, setQrText] = useState("");
   const [purchaseQuantity, setPurchaseQuantity] = useState(0);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -22,6 +26,7 @@ export default function RetailerDashboard() {
     storageCondition: "Refrigerated",
     retailPricePerKg: 0,
     availabilityStatus: "In Stock",
+    retailerLicenseNum: "",
   });
 
   useEffect(() => {
@@ -43,17 +48,28 @@ export default function RetailerDashboard() {
   useEffect(() => {
     if (!selectedBatchId) {
       setBatchInfo(null);
+      setChainRetailerDetails(null);
+      setQrCodeUrl("");
+      setQrText("");
       return;
     }
+
+    setQrCodeUrl("");
+    setQrText("");
+
     async function loadBatch() {
       try {
         const info = await blockchain.getBatch(selectedBatchId);
         setBatchInfo(info);
+
+        const details = await blockchain.getRetailerDetails(selectedBatchId);
+        setChainRetailerDetails(details);
       } catch (err) {
         console.error("failed to load batch info", err);
         setError(err.message || "Could not load batch information");
       }
     }
+
     loadBatch();
   }, [selectedBatchId]);
 
@@ -63,6 +79,19 @@ export default function RetailerDashboard() {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const generateQrCode = async (batchId) => {
+    if (!batchId) return;
+    try {
+      const qrValue = `https://trace.example.com/?batchId=${batchId}`;
+      const dataUrl = await QRCode.toDataURL(qrValue, { margin: 1, width: 280 });
+      setQrCodeUrl(dataUrl);
+      setQrText(qrValue);
+    } catch (err) {
+      console.error("failed to generate QR code", err);
+      setError("Unable to generate QR code for this batch.");
+    }
   };
 
   const handlePurchaseBatch = async (e) => {
@@ -79,7 +108,7 @@ export default function RetailerDashboard() {
     try {
       const receipt = await blockchain.purchaseBatch(selectedBatchId, parseInt(purchaseQuantity) || 0);
       console.log("Batch purchased", receipt);
-      setSuccessMessage(`✅ Batch purchased successfully! Quantity: ${purchaseQuantity}`);
+      setSuccessMessage(`Batch purchased successfully! Quantity: ${purchaseQuantity}`);
       setPurchaseQuantity(0);
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (err) {
@@ -120,7 +149,9 @@ export default function RetailerDashboard() {
 
       const receipt = await blockchain.addRetailerDetails(selectedBatchId, submittedData);
       console.log("Retailer details added", receipt);
-      setSuccessMessage("✅ Retailer details added successfully");
+      setChainRetailerDetails(submittedData);
+      await generateQrCode(selectedBatchId);
+      setSuccessMessage("Retailer details added successfully");
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (err) {
       console.error(err);
@@ -134,181 +165,221 @@ export default function RetailerDashboard() {
     <>
       <Navbar />
       <div className="dashboard-container">
-      <div className="dashboard-header">
-        <h1>🏪 Retailer Dashboard</h1>
-        <div className="account-info">
-          <strong>Wallet Address:</strong>
-          <code>{account || "Not connected"}</code>
-        </div>
-      </div>
-
-      {error && <div className="error-box">{error}</div>}
-      {successMessage && <div className="success-message">{successMessage}</div>}
-
-      <div className="batch-selector">
-        <label>📦 Select Batch to buy from farmer</label>
-        <select value={selectedBatchId} onChange={(e) => setSelectedBatchId(e.target.value)}>
-          <option value="">-- Select a batch --</option>
-          {allBatches.map((id) => (
-            <option key={id} value={id}>
-              {id}
-            </option>
-          ))}
-        </select>
-        {batchInfo && (
-          <div className="batch-info">
-            Remaining: <strong>{batchInfo.remainingQuantity.toString()}</strong> {batchInfo.unit}
+        <div className="dashboard-header">
+          <h1>Retailer Dashboard</h1>
+          <div className="account-info">
+            <strong>Wallet Address:</strong>
+            <code>{account || "Not connected"}</code>
           </div>
-        )}
-      </div>
+        </div>
 
-      {selectedBatchId && (
-        <>
-          <form onSubmit={handlePurchaseBatch}>
+        {error && <div className="error-box">{error}</div>}
+        {successMessage && <div className="success-message">{successMessage}</div>}
+
+        <div className="batch-selector">
+          <label>Select batch to buy from farmer</label>
+          <select value={selectedBatchId} onChange={(e) => setSelectedBatchId(e.target.value)}>
+            <option value="">-- Select a batch --</option>
+            {allBatches.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+          {batchInfo && (
+            <div className="batch-info">
+              Remaining: <strong>{batchInfo.remainingQuantity.toString()}</strong> {batchInfo.unit}
+            </div>
+          )}
+        </div>
+
+        {selectedBatchId && (
+          <>
             <div className="form-section">
-              <h2 className="form-section-title">Purchase Batch</h2>
-              <div className="form-grid">
-                <div className="form-group required">
-                  <label>Quantity to Purchase</label>
-                  <input
-                    type="number"
-                    value={purchaseQuantity}
-                    onChange={(e) => setPurchaseQuantity(e.target.value)}
-                    placeholder="200"
-                    min="1"
-                    max={batchInfo ? batchInfo.remainingQuantity : undefined}
-                    required
-                  />
+              <h2 className="form-section-title">Product QR Code</h2>
+              <div className="trace-grid">
+                <div className="trace-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                    <div>
+                      <p className="trace-label">Scan this QR in the Consumer page</p>
+                      <p className="trace-value">Batch ID: {selectedBatchId}</p>
+                    </div>
+                    {qrCodeUrl && (
+                      <a href={qrCodeUrl} download={`${selectedBatchId}-trace-qr.png`} className="btn btn-secondary">
+                        Download QR Image
+                      </a>
+                    )}
+                  </div>
+                  {qrCodeUrl ? (
+                    <img src={qrCodeUrl} alt={`QR code for ${selectedBatchId}`} className="qr-image" />
+                  ) : (
+                    <p className="trace-note">QR code will appear here after retailer details are saved successfully.</p>
+                  )}
+                </div>
+
+                <div className="trace-card">
+                  <span className="trace-label">QR Target</span>
+                  <span className="trace-value trace-path">{qrText || "Waiting for batch selection..."}</span>
+                  {chainRetailerDetails && Number(chainRetailerDetails.retailerId) > 0 && (
+                    <>
+                      <span className="trace-label">Retailer Name</span>
+                      <span className="trace-value">{chainRetailerDetails.storeName || "-"}</span>
+                      <span className="trace-label">Availability</span>
+                      <span className="trace-value">{chainRetailerDetails.availabilityStatus || "-"}</span>
+                    </>
+                  )}
                 </div>
               </div>
+            </div>
+
+            <form onSubmit={handlePurchaseBatch}>
+              <div className="form-section">
+                <h2 className="form-section-title">Purchase Batch</h2>
+                <div className="form-grid">
+                  <div className="form-group required">
+                    <label>Quantity to Purchase</label>
+                    <input
+                      type="number"
+                      value={purchaseQuantity}
+                      onChange={(e) => setPurchaseQuantity(e.target.value)}
+                      placeholder="200"
+                      min="1"
+                      max={batchInfo ? batchInfo.remainingQuantity : undefined}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="button-group">
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? "Processing..." : "Purchase Batch"}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <form onSubmit={handleAddRetailerDetails}>
+              <div className="form-section">
+                <h2 className="form-section-title">Store Information</h2>
+                <div className="form-grid">
+                  <div className="form-group required">
+                    <label>Store Name</label>
+                    <input
+                      type="text"
+                      name="storeName"
+                      value={retailerData.storeName}
+                      onChange={handleInputChange}
+                      placeholder="Fresh Mart, Organic Store"
+                      required
+                    />
+                  </div>
+                  <div className="form-group required">
+                    <label>Store Address</label>
+                    <input
+                      type="text"
+                      name="storeAddressFull"
+                      value={retailerData.storeAddressFull}
+                      onChange={handleInputChange}
+                      placeholder="456 Shop Street, Downtown"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h2 className="form-section-title">Product Timeline</h2>
+                <div className="form-grid">
+                  <div className="form-group required">
+                    <label>Product Received Date</label>
+                    <input
+                      type="date"
+                      name="productReceivedDate"
+                      value={retailerData.productReceivedDate}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div className="form-group required">
+                    <label>Product Expiry Date</label>
+                    <input
+                      type="date"
+                      name="productExpiryDate"
+                      value={retailerData.productExpiryDate}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div className="form-group required">
+                    <label>Shelf Life (Days)</label>
+                    <input
+                      type="number"
+                      name="shelfLifeInDays"
+                      value={retailerData.shelfLifeInDays}
+                      onChange={handleInputChange}
+                      placeholder="30"
+                      min="0"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h2 className="form-section-title">Storage & Pricing</h2>
+                <div className="form-grid">
+                  <div className="form-group required">
+                    <label>Storage Condition</label>
+                    <select name="storageCondition" value={retailerData.storageCondition} onChange={handleInputChange}>
+                      <option value="Refrigerated">Refrigerated</option>
+                      <option value="Room Temperature">Room Temperature</option>
+                      <option value="Frozen">Frozen</option>
+                      <option value="Ambient">Ambient</option>
+                    </select>
+                  </div>
+                  <div className="form-group required">
+                    <label>Retail Price (per Kg)</label>
+                    <input
+                      type="number"
+                      name="retailPricePerKg"
+                      value={retailerData.retailPricePerKg}
+                      onChange={handleInputChange}
+                      placeholder="250.50"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div className="form-group required">
+                    <label>Availability Status</label>
+                    <select name="availabilityStatus" value={retailerData.availabilityStatus} onChange={handleInputChange}>
+                      <option value="In Stock">In Stock</option>
+                      <option value="Low Stock">Low Stock</option>
+                      <option value="Out of Stock">Out of Stock</option>
+                    </select>
+                  </div>
+                  <div className="form-group required">
+                    <label>Retailer License No.</label>
+                    <input
+                      type="text"
+                      name="retailerLicenseNum"
+                      value={retailerData.retailerLicenseNum}
+                      onChange={handleInputChange}
+                      placeholder="RL-2024-5678"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="button-group">
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? "Processing..." : "✅ Purchase Batch"}
+                <button type="submit" className="btn btn-success" disabled={loading}>
+                  {loading ? "Processing..." : "Save Details"}
                 </button>
               </div>
-            </div>
-          </form>
-
-          <form onSubmit={handleAddRetailerDetails}>
-            <div className="form-section">
-              <h2 className="form-section-title">Store Information</h2>
-              <div className="form-grid">
-                <div className="form-group required">
-                  <label>Store Name</label>
-                  <input
-                    type="text"
-                    name="storeName"
-                    value={retailerData.storeName}
-                    onChange={handleInputChange}
-                    placeholder="Fresh Mart, Organic Store"
-                    required
-                  />
-                </div>
-                <div className="form-group required">
-                  <label>Store Address</label>
-                  <input
-                    type="text"
-                    name="storeAddressFull"
-                    value={retailerData.storeAddressFull}
-                    onChange={handleInputChange}
-                    placeholder="456 Shop Street, Downtown"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="form-section">
-              <h2 className="form-section-title">Product Timeline</h2>
-              <div className="form-grid">
-                <div className="form-group required">
-                  <label>Product Received Date</label>
-                  <input
-                    type="date"
-                    name="productReceivedDate"
-                    value={retailerData.productReceivedDate}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-                <div className="form-group required">
-                  <label>Product Expiry Date</label>
-                  <input
-                    type="date"
-                    name="productExpiryDate"
-                    value={retailerData.productExpiryDate}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-                <div className="form-group required">
-                  <label>Shelf Life (Days)</label>
-                  <input
-                    type="number"
-                    name="shelfLifeInDays"
-                    value={retailerData.shelfLifeInDays}
-                    onChange={handleInputChange}
-                    placeholder="30"
-                    min="0"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="form-section">
-              <h2 className="form-section-title">Storage & Pricing</h2>
-              <div className="form-grid">
-                <div className="form-group required">
-                  <label>Storage Condition</label>
-                  <select
-                    name="storageCondition"
-                    value={retailerData.storageCondition}
-                    onChange={handleInputChange}
-                  >
-                    <option value="Refrigerated">❄️ Refrigerated</option>
-                    <option value="Room Temperature">🌡️ Room Temperature</option>
-                    <option value="Frozen">🧊 Frozen</option>
-                    <option value="Ambient">💨 Ambient</option>
-                  </select>
-                </div>
-                <div className="form-group required">
-                  <label>Retail Price (per Kg)</label>
-                  <input
-                    type="number"
-                    name="retailPricePerKg"
-                    value={retailerData.retailPricePerKg}
-                    onChange={handleInputChange}
-                    placeholder="250.50"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
-                <div className="form-group required">
-                  <label>Availability Status</label>
-                  <select
-                    name="availabilityStatus"
-                    value={retailerData.availabilityStatus}
-                    onChange={handleInputChange}
-                  >
-                    <option value="In Stock">✅ In Stock</option>
-                    <option value="Low Stock">⚠️ Low Stock</option>
-                    <option value="Out of Stock">❌ Out of Stock</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="button-group">
-              <button type="submit" className="btn btn-success" disabled={loading}>
-                {loading ? "Processing..." : "💾 Save Details"}
-              </button>
-            </div>
-          </form>
-        </>
-      )}
-    </div>
+            </form>
+          </>
+        )}
+      </div>
     </>
   );
 }
